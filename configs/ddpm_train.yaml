@@ -1,0 +1,49 @@
+# Training Configuration for Standard DDPM (Pixel-space)
+project_name: "mnist-diffusion-comparison"
+run_name: "ddpm-pixel-baseline"
+
+dataset:
+  name: "MNIST"
+  root: "./data"
+  img_size: 32
+  channels: 1
+
+model:
+  type: "unet"
+  base_channels: 32
+  channel_mult: [1, 2, 4]
+  num_res_blocks: 2
+  attention: [false, false, false]
+  dropout: 0.1
+  use_checkpoint: false  # For gradient checkpointing (memory optimization)
+
+diffusion:
+  timesteps: 1000
+  beta_start: 0.0001
+  beta_end: 0.02
+  schedule: "linear"
+
+train:
+  batch_size: 128
+  lr: 0.0002
+  epochs: 20
+  save_every: 5
+  num_workers: 0
+  device: "cuda"  # or "mps" / "cpu"
+  loss_type: "l2"  # "l1", "l2", or "huber"
+  use_warmup: true  # Enable learning rate warmup
+  warmup_epochs: 2  # Number of warmup epochs
+  gradient_clip: 1.0  # Gradient clipping value
+  use_amp: false  # Mixed precision training (enable for speed, disable for stability)
+
+evaluation:
+  num_samples: 64  # Number of samples to generate for evaluation
+  sample_interval: 5  # Generate samples every N epochs
+  compute_fid: false  # Compute FID score (requires extra setup)
+  compute_is: false  # Compute Inception Score (requires extra setup)
+
+mlflow:
+  experiment_name: "MNIST_Diffusion"
+  tracking_uri: "file://./mlruns"  # Relative path to project directory
+  log_artifacts: true
+  log_models: true

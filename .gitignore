@@ -1,0 +1,19 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+
+# Environments
+venv/
+env/
+.env
+
+# Large Data & Weights (The stuff we don't want on GitHub)
+data/
+checkpoints/*.pth
+mlruns/
+outputs/
+
+# IDE files
+.vscode/
+.idea/
+.DS_Store

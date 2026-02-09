@@ -1,0 +1,15 @@
+# Core Deep Learning
+torch>=2.0.0
+torchvision>=0.15.0
+
+# Experiment Tracking & Config
+mlflow>=2.0.0
+PyYAML>=6.0
+
+# Numerical & Data Processing
+numpy>=1.23.0
+tqdm>=4.64.0
+
+# Visualization
+matplotlib>=3.6.0
+pillow>=9.0.0
