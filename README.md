@@ -1,5 +1,3 @@
-# Create a README.md file
-cat > README.md << 'EOF'
 # DDPM for MNIST - Diffusion Model Cookbook
 
 A complete implementation of Denoising Diffusion Probabilistic Models (DDPM) for MNIST digit generation.
@@ -12,4 +10,4 @@ A complete implementation of Denoising Diffusion Probabilistic Models (DDPM) for
 - **Configurable training** via YAML files
 - **Memory-efficient** training pipeline
 
-## 📁 Project Structure
+
