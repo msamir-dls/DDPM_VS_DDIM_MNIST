@@ -13,12 +13,27 @@ class DDIM(GaussianDiffusion):
     """
     
     def __init__(self, config):
+        # Make sure config has 'diffusion' key
+        if 'diffusion' not in config:
+            # Create default diffusion config
+            config['diffusion'] = {
+                'timesteps': 1000,
+                'beta_start': 0.0001,
+                'beta_end': 0.02,
+                'schedule': 'linear'
+            }
+        
+        # Make sure config has 'ddim' key
+        if 'ddim' not in config:
+            config['ddim'] = {'sampling_steps': 50, 'eta': 0.0}
+        
         super().__init__(config)
         self.ddim_timesteps = config['ddim']['sampling_steps']
         self.eta = config['ddim'].get('eta', 0.0)
         
         # Create DDIM sampling sequence
         self.ddim_timestep_sequence = self.make_ddim_timesteps()
+
         
     def make_ddim_timesteps(self):
         """Create a subsequence of timesteps for DDIM sampling"""

@@ -1,144 +1,120 @@
 import os
 import torch
 import torchvision
-import mlflow
 import sys
-from tqdm import tqdm
 import matplotlib.pyplot as plt
+from tqdm import tqdm
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.utils import load_config, get_device
+# Import after adding path
 from src.models.unet import UNet
 from src.schedulers.ddim_solver import DDIM
+from src.utils import load_config
 
 def load_trained_model(checkpoint_path, config):
-    """Load trained DDPM model for DDIM sampling with compatibility handling"""
-    device = get_device()
+    """Load trained DDPM model for DDIM sampling"""
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     
-    # Initialize model (same architecture as training)
+    # Initialize model
     model = UNet(config).to(device)
     
-    # Load trained weights
+    # Load checkpoint
     checkpoint = torch.load(checkpoint_path, map_location=device)
     
-    # Handle different checkpoint formats
+    # Load weights with strict=False to handle architecture differences
     if 'model_state_dict' in checkpoint:
-        state_dict = checkpoint['model_state_dict']
+        model.load_state_dict(checkpoint['model_state_dict'], strict=False)
     else:
-        state_dict = checkpoint
-    
-    # Load with strict=False to handle architecture differences
-    missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
-    
-    if missing_keys:
-        print(f"  Missing keys: {missing_keys[:5]}")  # Show first 5
-    if unexpected_keys:
-        print(f"  Unexpected keys: {unexpected_keys[:5]}")
+        model.load_state_dict(checkpoint, strict=False)
     
     model.eval()
-    print(f" Loaded trained model from {checkpoint_path}")
-    print(f"   - Epoch: {checkpoint.get('epoch', 'N/A')}")
-    print(f"   - Loss: {checkpoint.get('loss', checkpoint.get('final_loss', 'N/A')):.4f}")
-    
+    print(f" Loaded model from {checkpoint_path}")
     return model, device
 
-def generate_ddim_samples(model, ddim_scheduler, config, device, num_samples=16):
-    """Generate samples using DDIM"""
-    model.eval()
+def main():
+    """Simple DDIM inference"""
+    # Load config or create default
+    try:
+        config = load_config("configs/ddim_inference.yaml")
+    except:
+        print("  Using default config")
+        config = {
+            'dataset': {'img_size': 32, 'channels': 1},
+            'model': {
+                'base_channels': 32,
+                'channel_mult': [1, 2, 4],
+                'num_res_blocks': 2,
+                'attention': [False, False, False],
+                'dropout': 0.1
+            },
+            'diffusion': {
+                'timesteps': 1000,
+                'beta_start': 0.0001,
+                'beta_end': 0.02,
+                'schedule': 'linear'
+            },
+            'ddim': {
+                'sampling_steps': 50,
+                'eta': 0.0
+            }
+        }
+    
+    # Ensure config has required keys
+    if 'diffusion' not in config:
+        config['diffusion'] = {
+            'timesteps': 1000,
+            'beta_start': 0.0001,
+            'beta_end': 0.02,
+            'schedule': 'linear'
+        }
+    
+    if 'ddim' not in config:
+        config['ddim'] = {'sampling_steps': 50, 'eta': 0.0}
+    
+    print(f" DDIM Configuration:")
+    print(f"   - Sampling steps: {config['ddim']['sampling_steps']}")
+    print(f"   - Timesteps: {config['diffusion']['timesteps']}")
+    
+    # Load model
+    model, device = load_trained_model('checkpoints/ddpm_final.pth', config)
+    
+    # Initialize DDIM
+    ddim = DDIM(config).to(device)
+    
+    # Generate samples
+    num_samples = 16
+    print(f"\n Generating {num_samples} samples...")
+    
     with torch.no_grad():
         sample_shape = (num_samples, 
                        config['dataset']['channels'], 
                        config['dataset']['img_size'], 
                        config['dataset']['img_size'])
         
-        print(f" Generating {num_samples} samples with DDIM...")
-        samples = ddim_scheduler.sample(model, sample_shape)
-        samples = (samples.clamp(-1, 1) + 1) / 2  # [0, 1]
-        
-        return samples
-
-def main():
-    """Main DDIM inference pipeline - Simplified version"""
-    # Load DDIM config
-    config = load_config("configs/ddim_inference.yaml")
-    print(f"[*] DDIM Configuration:")
-    print(f"   - Sampling steps: {config['ddim']['sampling_steps']}")
-    print(f"   - Eta (stochasticity): {config['ddim']['eta']}")
-    
-    device = get_device()
-    print(f"📱 Using device: {device}")
-    
-    # Load trained model
-    checkpoint_path = config.get('model_checkpoint', 'checkpoints/ddpm_final.pth')
-    model, device = load_trained_model(checkpoint_path, config)
-    
-    # Initialize DDIM scheduler
-    ddim_scheduler = DDIM(config).to(device)
-    
-    # Generate samples
-    num_samples = config['inference'].get('num_samples', 16)
-    samples = generate_ddim_samples(model, ddim_scheduler, config, device, num_samples)
-    
-    # Save samples
-    os.makedirs('ddim_outputs', exist_ok=True)
+        samples = ddim.sample(model, sample_shape)
+        samples = (samples.clamp(-1, 1) + 1) / 2  # Convert to [0, 1]
     
     # Save grid
+    os.makedirs('ddim_outputs', exist_ok=True)
+    grid_path = 'ddim_outputs/ddim_samples.png'
+    
     grid = torchvision.utils.make_grid(samples, nrow=4, padding=2)
-    grid_path = 'ddim_outputs/ddim_samples_grid.png'
     torchvision.utils.save_image(grid, grid_path, normalize=True)
-    print(f" Saved samples grid to {grid_path}")
     
-    # Save individual samples
-    for i in range(min(10, len(samples))):
-        sample_path = f'ddim_outputs/sample_{i:03d}.png'
-        torchvision.utils.save_image(samples[i], sample_path, normalize=True)
+    # Display
+    plt.figure(figsize=(10, 10))
+    plt.imshow(grid.permute(1, 2, 0).cpu().numpy().squeeze(), cmap='gray')
+    plt.title(f'DDIM Samples ({config["ddim"]["sampling_steps"]} steps)')
+    plt.axis('off')
+    plt.tight_layout()
+    plt.savefig('ddim_outputs/ddim_visualization.png', dpi=150, bbox_inches='tight')
+    plt.show()
     
-    # Display samples
-    try:
-        plt.figure(figsize=(12, 12))
-        plt.imshow(grid.permute(1, 2, 0).cpu().numpy().squeeze(), cmap='gray')
-        plt.title(f'DDIM Generated Samples ({config["ddim"]["sampling_steps"]} steps)')
-        plt.axis('off')
-        plt.show()
-    except:
-        print("  Could not display images. Check 'ddim_outputs/' folder.")
-    
-    # Compare with DDPM if checkpoint exists
-    try:
-        from src.schedulers.gaussian import GaussianDiffusion
-        import time
-        
-        print("\n Comparing with DDPM (10 steps for speed):")
-        
-        # Create DDPM scheduler
-        ddpm_config = config.copy()
-        ddpm_config['diffusion']['timesteps'] = 10  # Just 10 steps for quick comparison
-        
-        ddpm_scheduler = GaussianDiffusion(ddpm_config).to(device)
-        
-        # Time DDPM
-        start = time.time()
-        with torch.no_grad():
-            ddpm_samples = ddpm_scheduler.sample(model, (4, 1, 32, 32))
-        ddpm_time = time.time() - start
-        
-        # Time DDIM
-        start = time.time()
-        with torch.no_grad():
-            ddim_samples = ddim_scheduler.sample(model, (4, 1, 32, 32))
-        ddim_time = time.time() - start
-        
-        print(f"   DDPM (10 steps): {ddpm_time:.2f}s")
-        print(f"   DDIM ({ddpm_scheduler.ddim_timesteps} steps): {ddim_time:.2f}s")
-        print(f"   Speedup: {ddpm_time/ddim_time:.1f}x faster!")
-        
-    except Exception as e:
-        print(f"  Could not compare with DDPM: {e}")
-    
-    print(f"\n DDIM Inference Complete!")
-    print(f"   Generated {len(samples)} samples")
-    print(f"   Check 'ddim_outputs/' folder for results")
+    print(f"\n DDIM generation complete!")
+    print(f"   - Generated {num_samples} samples")
+    print(f"   - Saved to: {grid_path}")
+    print(f"   - Check 'ddim_outputs/' folder")
 
 if __name__ == "__main__":
     main()
